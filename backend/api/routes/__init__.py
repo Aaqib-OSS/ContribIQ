@@ -4,6 +4,8 @@ from backend.api.routes.auth import router as auth_router
 from backend.api.routes.profile import router as profile_router
 from backend.api.routes.oauth import router as oauth_router
 from backend.api.routes.analysis import router as analysis_router
+from backend.api.routes.issues import router as issues_router
+from backend.api.routes.qa import router as qa_router
 
 router = APIRouter()
 
@@ -11,3 +13,5 @@ router.include_router(auth_router)
 router.include_router(profile_router)
 router.include_router(oauth_router)
 router.include_router(analysis_router)
+router.include_router(issues_router)
+router.include_router(qa_router)
