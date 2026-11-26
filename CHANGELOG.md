@@ -1,9 +1,9 @@
-## [1.1.3](https://github.com/nooriegarg/ContribIQ/compare/v1.1.2...v1.1.3) (2026-11-26)
+## [1.1.4](https://github.com/nooriegarg/ContribIQ/compare/v1.1.3...v1.1.4) (2026-11-26)
 
 
 ### Bug Fixes
 
-* pin actions/checkout and actions/setup-node to SHAs in release.yml ([#197](https://github.com/nooriegarg/ContribIQ/issues/197)) ([f67f372](https://github.com/nooriegarg/ContribIQ/commit/f67f372b019a55734d3c22d0b6a6ddb441c1f0a9))
+* pin release.yml actions to commit SHAs ([#199](https://github.com/nooriegarg/ContribIQ/issues/199)) ([62b9934](https://github.com/nooriegarg/ContribIQ/commit/62b9934269fd8d49d00b343285a2fe266eb58858))
 
 # Changelog
 
