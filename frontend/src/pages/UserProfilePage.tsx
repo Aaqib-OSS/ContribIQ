@@ -117,6 +117,20 @@ function computeBadges(merged: UserPR[]): PRBadgeDef[] {
   ]
 }
 
+function shareOnTwitter(badge: PRBadgeDef) {
+  const text = encodeURIComponent(
+    `🎉 Just earned the "${badge.label}" badge on ContribIQ!\n${badge.desc}\n\n#OpenSource #GitHub #ContribIQ`
+  )
+  window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank', 'noopener,noreferrer')
+}
+
+function shareOnLinkedIn(badge: PRBadgeDef) {
+  const text = encodeURIComponent(
+    `🎉 Just earned the "${badge.label}" badge on ContribIQ!\n\n${badge.desc}\n\n#OpenSource #GitHub #ContribIQ`
+  )
+  window.open(`https://www.linkedin.com/feed/?shareActive=true&text=${text}`, '_blank', 'noopener,noreferrer')
+}
+
 export default function UserProfilePage() {
   const { token, user, logout, updateUser } = useAuth()
   const navigate = useNavigate()
@@ -133,7 +147,7 @@ export default function UserProfilePage() {
   const [saved, setSaved] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(() => user ? getAvatarUrl(user.id) : null)
-  const [badges, setBadges] = useState<PRBadgeDef[]>([])
+  const [badges, setBadges] = useState<PRBadgeDef[]>(() => computeBadges([]))
   const [prsLoading, setPrsLoading] = useState(false)
   const [selectedBadge, setSelectedBadge] = useState<PRBadgeDef | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -165,8 +179,8 @@ export default function UserProfilePage() {
       .then(data => {
         if (!active) return
         const merged = data.filter(pr => pr.merged_at !== null)
-        console.log('[badges] total PRs:', data.length, 'merged:', merged.length, merged.map(p => p.repo + '#' + p.number))
-        setBadges(computeBadges(merged))
+        const computed = computeBadges(merged)
+        setBadges(computed)
       })
       .catch(() => {})
       .finally(() => { if (active) setPrsLoading(false) })
@@ -278,14 +292,12 @@ export default function UserProfilePage() {
                         <div
                           key={b.id}
                           className={`up-badge-item earned${selectedBadge?.id === b.id ? ' selected' : ''}`}
-                          onMouseEnter={() => setSelectedBadge(b)}
-                          onMouseLeave={() => setSelectedBadge(null)}
-                          onFocus={() => setSelectedBadge(b)}
-                          onBlur={() => setSelectedBadge(null)}
+                          onClick={() => setSelectedBadge(b)}
                           tabIndex={0}
+                          onKeyDown={e => e.key === 'Enter' && setSelectedBadge(b)}
                           aria-label={`${b.label}: ${b.desc}`}
-                          data-tooltip={b.desc}
                         >
+                          <span className="up-badge-tooltip">{b.desc}</span>
                           <div className="up-badge-icon">
                             <BadgeIcon id={b.id} size={24} label={b.label} />
                             {b.count && b.count > 1 && (
@@ -293,6 +305,10 @@ export default function UserProfilePage() {
                             )}
                           </div>
                           <span className="up-badge-label">{b.label}</span>
+                          <div className="up-badge-share-row">
+                            <button className="up-badge-share-btn up-badge-share-tw" title="Share on X" onClick={e => { e.stopPropagation(); shareOnTwitter(b) }} type="button">𝕏</button>
+                            <button className="up-badge-share-btn up-badge-share-li" title="Share on LinkedIn" onClick={e => { e.stopPropagation(); shareOnLinkedIn(b) }} type="button">in</button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -308,14 +324,12 @@ export default function UserProfilePage() {
                         <div
                           key={b.id}
                           className={`up-badge-item${selectedBadge?.id === b.id ? ' selected' : ''}`}
-                          onMouseEnter={() => setSelectedBadge(b)}
-                          onMouseLeave={() => setSelectedBadge(null)}
-                          onFocus={() => setSelectedBadge(b)}
-                          onBlur={() => setSelectedBadge(null)}
+                          onClick={() => setSelectedBadge(b)}
+                          onKeyDown={e => e.key === 'Enter' && setSelectedBadge(b)}
                           tabIndex={0}
                           aria-label={`${b.label}: ${b.desc} (not yet earned)`}
-                          data-tooltip={`${b.desc} (not yet earned)`}
                         >
+                          <span className="up-badge-tooltip">{b.desc}</span>
                           <div className="up-badge-icon">
                             <BadgeIcon id={b.id} size={24} label={b.label} />
                           </div>
@@ -329,15 +343,19 @@ export default function UserProfilePage() {
                 {/* Hover modal shared across both sections */}
                 {selectedBadge && (
                   <>
-                    <div className="up-badge-modal-backdrop" />
+                    <div className="up-badge-modal-backdrop" onClick={() => setSelectedBadge(null)} />
                     <div
                       className="up-badge-modal"
                       role="dialog"
                       aria-modal="true"
                       aria-label={selectedBadge.label}
-                      onMouseEnter={() => setSelectedBadge(selectedBadge)}
-                      onMouseLeave={() => setSelectedBadge(null)}
                     >
+                      <button
+                        className="up-badge-modal-close"
+                        onClick={() => setSelectedBadge(null)}
+                        aria-label="Close"
+                        type="button"
+                      >×</button>
                       <div className="up-badge-modal-banner">
                         <BadgeIcon id={selectedBadge.id} size={80} label={selectedBadge.label} />
                       </div>
@@ -352,6 +370,12 @@ export default function UserProfilePage() {
                           )}
                         </div>
                         <p className="up-badge-modal-desc">{selectedBadge.desc}</p>
+                        {selectedBadge.earned && (
+                          <div className="up-badge-modal-share-row">
+                            <button className="up-badge-modal-share-btn up-badge-modal-share-tw" onClick={() => shareOnTwitter(selectedBadge)} type="button">Share on 𝕏</button>
+                            <button className="up-badge-modal-share-btn up-badge-modal-share-li" onClick={() => shareOnLinkedIn(selectedBadge)} type="button">Share on LinkedIn</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>

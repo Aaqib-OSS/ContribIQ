@@ -1,16 +1,22 @@
 import asyncio
+import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.routes.auth import get_current_user
+from backend.api.routes.analysis import _resolve_github_token
 from backend.db.session import get_db
+from backend.models.badge import UserBadge
 from backend.models.profile import ContributorProfile
 from backend.models.user import User
-from backend.schemas.profile import ProfileRead, ProfileUpdate
-from backend.services.valkey_client import get_valkey
+from backend.schemas.profile import ProfileRead, ProfileUpdate, BadgeSyncItem
 from backend.services.github_client import GitHubClient
+from backend.services.valkey_client import get_key, get_valkey
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users/me", tags=["profile"])
 
@@ -89,10 +95,12 @@ async def get_my_prs(
     if not username:
         return []
 
+    effective_token = await _resolve_github_token(current_user.id, github_token)
+
     allowed_states = {"open", "closed", "all"}
     pr_state = state if state in allowed_states else "open"
 
-    async with GitHubClient(token=github_token) as client:
+    async with GitHubClient(token=effective_token) as client:
         try:
             prs = await client.get_user_prs(username, state=pr_state)
         except Exception:
@@ -109,7 +117,7 @@ async def get_my_prs(
         checks: list[dict] = []
         if owner and repo:
             try:
-                async with GitHubClient(token=github_token) as c:
+                async with GitHubClient(token=effective_token) as c:
                     pr_detail = await c._http.get(
                         f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr['number']}",
                         headers=c._auth_headers(),
@@ -122,8 +130,13 @@ async def get_my_prs(
                         head_sha = detail_json.get("head", {}).get("sha")
                         if head_sha:
                             checks = await c.get_check_runs(owner, repo, head_sha)
-            except Exception:
-                pass
+                    else:
+                        _log.warning(
+                            "PR detail %s/%s#%s: HTTP %s (token_present=%s)",
+                            owner, repo, pr['number'], pr_detail.status_code, bool(effective_token),
+                        )
+            except Exception as exc:
+                _log.warning("PR enrich error %s/%s#%s: %s", owner, repo, pr.get('number'), exc)
 
         overall = _summarise_checks(checks)
         return {
@@ -164,3 +177,45 @@ def _summarise_checks(checks: list[dict]) -> str:
     if all(c == "success" for c in conclusions) and conclusions:
         return "success"
     return "pending"
+
+
+@router.post("/badges/sync")
+async def sync_badges(
+    body: list[BadgeSyncItem],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upsert the full badge state for the current user. Replaces all existing rows."""
+    await db.execute(delete(UserBadge).where(UserBadge.user_id == current_user.id))
+    now = datetime.now(timezone.utc)
+    for item in body:
+        db.add(UserBadge(
+            user_id=current_user.id,
+            badge_id=item.badge_id,
+            earned=item.earned,
+            count=item.count,
+            earned_at=now if item.earned else None,
+        ))
+    await db.commit()
+    return {"synced": len(body)}
+
+
+@router.get("/badges")
+async def get_badges(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the stored badge state for the current user."""
+    result = await db.execute(
+        select(UserBadge).where(UserBadge.user_id == current_user.id)
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "badge_id": r.badge_id,
+            "earned": r.earned,
+            "count": r.count,
+            "earned_at": r.earned_at.isoformat() if r.earned_at else None,
+        }
+        for r in rows
+    ]
